@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Experiments\E1_Experiments\**" />
+    <Compile Remove="Experiments\E2_Performance\**" />
+    <Compile Remove="Experiments\Exports\**" />
+    <Compile Remove="NewFolder\**" />
+    <Compile Remove="Results\**" />
+    <Content Remove="Experiments\E1_Experiments\**" />
+    <Content Remove="Experiments\E2_Performance\**" />
+    <Content Remove="Experiments\Exports\**" />
+    <Content Remove="NewFolder\**" />
+    <Content Remove="Results\**" />
+    <EmbeddedResource Remove="Experiments\E1_Experiments\**" />
+    <EmbeddedResource Remove="Experiments\E2_Performance\**" />
+    <EmbeddedResource Remove="Experiments\Exports\**" />
+    <EmbeddedResource Remove="NewFolder\**" />
+    <EmbeddedResource Remove="Results\**" />
+    <None Remove="Experiments\E1_Experiments\**" />
+    <None Remove="Experiments\E2_Performance\**" />
+    <None Remove="Experiments\Exports\**" />
+    <None Remove="NewFolder\**" />
+    <None Remove="Results\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="EPPlus" Version="8.5.4" />
+    <PackageReference Include="ExcelDataReader" Version="3.8.0" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.8.0" />
+    <PackageReference Include="Hangfire" Version="1.8.23" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.23" />
+    <PackageReference Include="Hangfire.SqlServer" Version="1.8.23" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.26" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.26">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MWArray">
+      <HintPath>..\..\..\..\..\..\Program Files\MATLAB\R2026b\toolbox\dotnetbuilder\bin\win64\netstandard2.0\MWArray.dll</HintPath>
+    </Reference>
+    <Reference Include="MySoftDiagnosisAssembly">
+      <HintPath>..\..\..\..\Documents\MATLAB\Librerias\BPLibrerias\LibreriaGeneral\DotNETAssembly1\output\build\MySoftDiagnosisAssembly.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Experiments\Infrastructure\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,77 @@
+PAQUETE FINAL E2 - E7  (reemplaza Paquete_E2_E3 y Paquete_E2_a_E7)
+====================================================================
+
+DONDE VA CADA ARCHIVO (reemplazar los existentes)
+  Program.cs                              -> raiz del proyecto
+  Services/MatlabService.cs               -> Services/
+  Services/E1BBackendTrace.cs             -> Services/
+  Models/DiagnosisJob.cs                  -> Models/
+  Queues/DiagnosisQueue.cs                -> Queues/
+  Queues/DiagnosisWorkerOptions.cs        -> Queues/          (NUEVO)
+  Workers/DiagnosisWorker.cs              -> Workers/
+  Experiments/E2/*.cs                     -> Experiments/E2/  (incluye DiagnosisDataLoader.cs NUEVO)
+  Experiments/E3/*.cs                     -> Experiments/E3/
+  Experiments/E4/*.cs                     -> Experiments/E4/  (incluye OrchestrationHarness.cs NUEVO)
+  Experiments/E5/*.cs                     -> Experiments/E5/  (FaultInjection/ no cambia)
+  Experiments/E6/*.cs                     -> Experiments/E6/
+  Experiments/E7/*.cs                     -> Experiments/E7/
+  MATLAB_E2/Scripts/*.m                   -> tu carpeta E2\Scripts de MATLAB
+
+BORRAR (ya no se usan)
+  Experiments/E4/PipelineComparison.cs
+  Experiments/E4/PipelineMetric.cs
+  Experiments/E6/E6Scenario.cs
+
+SIGUEN VIGENTES (de entregas anteriores, ya instalados)
+  MAPAImportService.cs, FeatureExtractionService.cs, AIDiagnosisService.cs,
+  E1BExperimentRunner.cs, E1BComparisonService.cs
+
+---------------------------------------------------------------------
+ORDEN DE EJECUCION (una sola sesion; NO reiniciar entre experimentos,
+salvo el reinicio inicial)
+---------------------------------------------------------------------
+ 0. Compilar. Reiniciar la API. No ejecutar nada mas antes de E2.
+
+ 1. E2  POST /api/experiments/e2/run
+        { "iterations": 10 }
+    -> MANDAR la respuesta y StageMetrics.csv ANTES de seguir.
+       Con eso se ve cuanto cuestan FHS y CVDRisk y se calibra el numero
+       de iteraciones de los demas (si un diagnostico tarda ~5 s, algunos
+       experimentos durarian horas).
+
+ 2. E3  { "concurrencyLevels": [1, 2, 4, 8], "iterations": 5, "warmStart": true }
+ 3. E4  { "iterations": 10, "asyncConsumers": 1 }
+ 4. E6  { "iterations": 10, "includeSync": true, "asyncConsumers": [1, 2, 4] }
+ 5. E5  { "iterations": 3, "scenarios": [0, 2, 4, 3], "includeQueueRecovery": true }
+        (0=None, 2=Intermittent, 4=Recovery, 3=Persistent; en este proyecto
+         los enums se envian como NUMERO)
+ 6. E7  { "iterations": 30 }
+
+ (Iteraciones provisionales: se ajustan con el resultado del paso 1.)
+
+En cada respuesta revisar:
+  - errores vacios / TotalFailures = 0 (salvo los fallos inyectados en E5)
+  - ResultsMatchingBaseline = TotalJobs (E4, E6)
+  - matlabInstancesCreated = 1 (E2, E3)
+
+---------------------------------------------------------------------
+QUE CAMBIO EN LA COLA (afecta E4, E5, E6)
+---------------------------------------------------------------------
+  * Un solo consumidor -> ahora N consumidores configurables (defecto 1,
+    igual que antes en produccion).
+  * Bug "49 de 50": la medicion del worker se cerraba DESPUES de completar
+    el job; el experimento leia antes de que se registrara la ultima.
+  * Bug de cuelgue: estudio inexistente -> 'continue' sin completar el job.
+  * Bug de cuelgue: fallo definitivo con error al guardar -> 'catch {}'
+    vacio sin completar el job.
+  * Marcas de tiempo por job: espera en cola, diagnostico, latencia total,
+    intentos y consumidor.
+  * El worker ya tenia REINTENTOS (3): E5 ahora los usa para evaluar
+    recuperacion real.
+
+E4: Sync vs Async (1 consumidor), orden alternado ABBA, makespan por lote,
+    verificacion de resultados. BatchSummary.csv + JobRecords.csv.
+E6: Sync, Async 1c, 2c, 4c; orden rotado por iteracion; makespan por lote.
+    (Se eliminan Cold/Warm: eran solo etiquetas.)
+E5: llamada directa (aislamiento, trazabilidad, integridad) + a traves de la
+    cola (recuperacion por reintento).

@@ -1,0 +1,14 @@
+﻿Property,Value
+ModelAssemblyName,"MySoftDiagnosisAssembly"
+ModelAssemblyVersion,"2.0.0.0"
+ModelAssemblySha256,"2E80D2184F31D2E0AE4B210BCA5E346937ECF422A64DA83A681D8A703624C2DF"
+ModelAssemblyPath,"C:\Users\cynth\source\repos\bloodPressureWebApi\bloodPressureWebApi\bin\Debug\net8.0\MySoftDiagnosisAssembly.dll"
+MWArrayAssemblyVersion,"2.26.1.0"
+MatlabRuntimeEnvironment,""
+DotNetRuntime,".NET 8.0.32"
+OperatingSystem,"Microsoft Windows 10.0.26200"
+ProcessArchitecture,"X64"
+MachineName,"LAPTOP-QIMT18HI"
+ProcessorCount,12
+MatlabServiceInitializationMs,42608.559
+CapturedAtUtc,"2026-10-17T19:05:57.8075189Z"

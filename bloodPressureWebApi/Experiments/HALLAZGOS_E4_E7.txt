@@ -1,0 +1,86 @@
+REVISION E4 - E7  +  PAQUETE DE CORRECCIONES
+============================================
+
+CONTENIDO DEL PAQUETE (Paquete_E2_a_E7.zip)
+  Services/MatlabService.cs              (mide inicializacion del runtime)
+  Services/E1BBackendTrace.cs            (traza con interruptor Enabled)
+  Experiments_E2/*                       (benchmark + FHS y CVDRisk medidos,
+                                          DiagnosisDataLoader compartido)
+  Experiments_E3/*                       (concurrencia)
+  Experiments_E5/*                       (fallos: aislamiento, trazabilidad,
+                                          integridad)
+  Experiments_E7/*                       (reproducibilidad con ANN + procedencia)
+  MATLAB_E2/Scripts/e2_config.m          (reconoce FHS y CVDRisk)
+
+E4 y E6 NO estan corregidos todavia: falta el codigo de la cola
+(DiagnosisQueue, DiagnosisJob y el worker/BackgroundService que la consume)
+y la linea de Program.cs donde se registran los servicios.
+
+---------------------------------------------------------------
+HALLAZGOS
+---------------------------------------------------------------
+TRANSVERSAL
+  * AIDiagnosisService ejecuta FHS y CVDRisk (MATLAB), lee la BD y guarda el
+    diagnostico. E2 no medía nada de eso: por eso E2 daba ~31 ms y E4/E5/E7
+    ~5 s por diagnostico. Ahora E2 mide FHS y CVDRisk como etapas.
+    OJO: FHS y CVDRisk NO forman parte del modelo validado en E1-B (el script
+    de MATLAB los excluye). El articulo debe decir que son componentes
+    adicionales del backend, no validados contra la referencia.
+  * El DbContext acumulaba entidades durante miles de diagnosticos (cada
+    RunDiagnosis carga estudio + lecturas + factores). Ahora se limpia tras
+    cada ejecucion. Candidato a explicar parte de la deriva/bloques de E7.
+
+E4 (Sync vs Async) - pendiente de la cola
+  * "Async" encola en DiagnosisQueue; si la cola tiene UN solo consumidor,
+    Async hace el mismo trabajo en serie + la sobrecarga de la cola: por eso
+    sale mas lento. Hay que confirmarlo con el codigo del worker.
+  * El profiler se comparte con el worker (otro hilo): probable causa de las
+    "49 observaciones" de Async en lugar de 50.
+  * Sync siempre corre antes que Async (efecto de orden). Debe alternarse.
+  * PipelineComparison: Response/Processing/Total son el MISMO numero y
+    "ThroughputImprovement" se calcula con medias, no con throughput.
+
+E5 (fallos) - CORREGIDO
+  * MatlabFailure y PersistentFailure son identicos (siempre fallan; solo
+    cambia el mensaje). Reportar solo uno.
+  * Intermittent (cada 5.a) y Recovery (primeras 10 de 50) dan 80 % POR
+    CONSTRUCCION: el resultado describe al inyector, no al backend.
+  * El fallo se inyecta en C# ANTES de llamar a MATLAB: no es un fallo "del
+    motor de MATLAB" sino en la frontera del motor cientifico.
+  * No existe mecanismo de recuperacion (reintentos, circuit breaker).
+  * Filtraba StudyStatus == "ANALYZED": dependia de haber corrido E4 antes.
+  * Si fallaba a la mitad, el inyector quedaba ACTIVO y contaminaba E4/E6/E7.
+  -> Nuevo E5 mide lo que si se puede afirmar: aislamiento, trazabilidad e
+     integridad (resultado == linea base durante y despues de los fallos).
+
+E6 (ablacion) - pendiente de la cola + decision de diseno
+  * "Cold" y "Warm" ejecutan EXACTAMENTE el mismo codigo: ColdStart es solo
+    una etiqueta. Las 8 configuraciones son en realidad 4, duplicadas.
+    Esto explica WarmSync > ColdSync y vuelve invalida la comparacion de 8
+    grupos con Kruskal-Wallis.
+  * "10/25 usuarios" = tamano de lote encolado; la concurrencia real depende
+    de cuantos consumidores tenga la cola.
+  * Mismo filtro "ANALYZED" que E5.
+
+E7 (reproducibilidad) - CORREGIDO
+  * Solo repetia el diagnostico sobre features guardadas: la ANN nunca se
+    ponia a prueba. Ahora cada ejecucion recalcula features (con ANN) y
+    diagnostico.
+  * La firma incluia constantes (versiones, ConfidenceScore): ahora solo
+    valores calculados.
+  * "Consistencia de version 100 %" era tautologico. Ahora se registra
+    procedencia real: SHA-256 del ensamblado de modelos, version de MWArray,
+    .NET, SO, maquina, nucleos y tiempo de inicializacion del runtime.
+
+---------------------------------------------------------------
+COMO CORRER (cuando E4 y E6 esten listos, todo en una sesion)
+---------------------------------------------------------------
+  1. Reiniciar la API.
+  2. E2   { "iterations": 30 }
+  3. E3   { "concurrencyLevels": [1,2,4,8], "iterations": 10, "warmStart": true }
+  4. E4   (pendiente)
+  5. E5   { "iterations": 5,
+            "scenarios": ["None","IntermittentFailure","RecoveryFailure","PersistentFailure"] }
+          (en Swagger el enum puede pedirse como numero: [0,2,4,3])
+  6. E6   (pendiente)
+  7. E7   { "iterations": 30 }      <- el mas largo (~2 h)

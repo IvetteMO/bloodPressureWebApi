@@ -1,0 +1,5 @@
+﻿Scenario,Executions,Successful,Failed,SuccessRatePercent,FailuresMatchingInjectedFault,SuccessfulMatchingBaseline,MedianSuccessMs,MedianFailureMs,PostFaultVerificationMatches,PostFaultVerificationStudies
+"None",250,250,0,100,0,250,25.4068,NaN,0,0
+"IntermittentFailure",250,200,50,80,50,200,25.26565,36.3777,50,50
+"RecoveryFailure",250,200,50,80,50,200,25.4285,35.77715,50,50
+"PersistentFailure",250,0,250,0,250,0,NaN,35.549499999999995,50,50

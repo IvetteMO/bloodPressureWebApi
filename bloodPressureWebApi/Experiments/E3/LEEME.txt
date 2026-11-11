@@ -1,0 +1,49 @@
+E3  -  EJECUCION CONCURRENTE  (CORRECCIONES)
+============================================
+
+ARCHIVOS
+  Experiments/E2/DiagnosisDataLoader.cs   (NUEVO, va en la carpeta de E2)
+  Experiments/E3/E3ExperimentRunner.cs
+  Experiments/E3/E3ExperimentRequestDto.cs
+  Experiments/E3/E3ExperimentResultDto.cs
+  Controllers/Experiments/E3Controller.cs
+
+POR QUE ERA NECESARIO
+  Con el DiagnosisBenchmark corregido de E2 (que ahora ejecuta la ANN), el E3
+  anterior FALLABA: no cargaba las 47 lecturas. Ademas tenia los mismos
+  problemas que E2 (45 estudios por StudyStatus, edad 0, sin ANN).
+
+QUE CAMBIO
+  1. Mismo cargador de datos que E2 (DiagnosisDataLoader): 50 estudios, ANN incluida.
+  2. Barrido de concurrencia en una sola corrida: [1, 2, 4, 8]. El nivel 1 es
+     la linea base secuencial contra la que se compara todo.
+  3. Metricas propias de concurrencia:
+       IterationSummary.csv : makespan (tiempo de pared del lote) y throughput
+                              por nivel e iteracion  <- EL RESULTADO PRINCIPAL
+       DiagnosisResults.csv : latencia de pared de cada diagnostico, hilo,
+                              salidas y TrendMatchesStored
+       StageMetrics.csv     : tiempo por etapa (como antes)
+  4. Un profiler por diagnostico (antes uno compartido entre hilos).
+  5. WarmStart=true hace una pasada secuencial NO medida antes de empezar
+     (antes solo cambiaba una etiqueta). E3 mide concurrencia en estado
+     estable; el arranque en frio ya lo caracteriza E2.
+  6. Ya no se exporta StageStatistics.csv (usaba SD poblacional); las
+     estadisticas se calculan en MATLAB desde los datos crudos.
+
+COMO CORRERLO (Swagger: POST /api/experiments/e3/run)
+  No hace falta reiniciar la API (E3 se calienta solo).
+  Body:
+  {
+    "concurrencyLevels": [1, 2, 4, 8],
+    "iterations": 10,
+    "warmStart": true
+  }
+  Respuesta esperada: studiesSelected = 50, errors = [],
+  studiesProcessed = 50 x 10 x 4 = 2000.
+  Copiar IterationSummary.csv, DiagnosisResults.csv y StageMetrics.csv.
+
+PENDIENTE CRITICO PARA INTERPRETAR E3
+  Enviar MatlabService.cs. Si las llamadas al MATLAB Runtime estan protegidas
+  con un lock (o el runtime serializa internamente), los hilos HACEN FILA:
+  el tiempo por etapa crece con la concurrencia pero el throughput no mejora.
+  Eso no es un error, pero cambia por completo como se redacta E3.

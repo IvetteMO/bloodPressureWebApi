@@ -1,0 +1,32 @@
+{
+  "startedAt": "2026-10-17T19:37:32.387Z",
+  "finishedAt": "2026-10-17T19:37:32.387Z",
+  "studiesSelected": 0,
+  "matlabFirstInitializationMs": 0,
+  "matlabInstancesCreated": 0,
+  "studiesProcessed": 0,
+  "outputFolder": "string",
+  "errors": [
+    "string"
+  ],
+  "totalExecutionTimeSeconds": 0,
+  "throughputStudiesPerSecond": 0,
+  "results": [
+    {
+      "studyId": 0,
+      "heartRateRisk": 0,
+      "bloodPressureRisk": 0,
+      "pressureLoadRisk": 0,
+      "nocturnalRisk": 0,
+      "hypertensionRisk": 0,
+      "cardiovascularRisk": 0,
+      "heartAge": 0,
+      "diagnosisLabel": "string",
+      "nocturnalProfile": "string",
+      "loadDiagnosis": "string",
+      "heartRateDiagnosis": "string",
+      "iteration": 0,
+      "trendMatchesStored": true
+    }
+  ]
+}
