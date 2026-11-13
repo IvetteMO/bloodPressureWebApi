@@ -1,4 +1,5 @@
 ﻿using bloodPressureWebApi.Data;
+using bloodPressureWebApi.Exceptions;
 using bloodPressureWebApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -72,7 +73,7 @@ namespace bloodPressureWebApi.Services
 
                 // (5) Igual que MATLAB: exactamente 47.
                 if (readings.Count != RequiredReadings)
-                    throw new InvalidOperationException(
+                    throw new InvalidStudyDataException(
                         $"Study {studyId}: se esperaban {RequiredReadings} lecturas y hay {readings.Count}.");
 
                 // (2) Dia/noche desde el import (fuente unica de verdad).
@@ -80,7 +81,7 @@ namespace bloodPressureWebApi.Services
                 var night = readings.Where(x => x.Period == "NIGHT").ToList();
 
                 if (day.Count == 0 || night.Count == 0)
-                    throw new InvalidOperationException(
+                    throw new InvalidStudyDataException(
                         $"Study {studyId}: no hay lecturas de dia o de noche (dia={day.Count}, noche={night.Count}).");
 
                 double daySysRaw = day.Average(x => (double)x.Systolic);

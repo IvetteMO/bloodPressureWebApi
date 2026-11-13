@@ -1,7 +1,9 @@
-﻿using bloodPressureWebApi.Data;
+﻿using bloodPressureWebApi.Constants;
+using bloodPressureWebApi.Data;
 using bloodPressureWebApi.DTOs.Shared;
 using bloodPressureWebApi.DTOs.Studies;
 using bloodPressureWebApi.Models;
+using bloodPressureWebApi.Queues;
 using bloodPressureWebApi.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -103,7 +105,9 @@ namespace bloodPressureWebApi.Controllers
         }
 
         [HttpGet("full/{studyId}")]
-        public async Task<IActionResult> GetFullStudy(int studyId)
+        public async Task<IActionResult> GetFullStudy(
+            int studyId,
+            [FromServices] IHostEnvironment environment)
         {
             var study =
                 await _context.MAPAStudies
@@ -120,15 +124,19 @@ namespace bloodPressureWebApi.Controllers
 
                 .Include(x => x.Diagnosis)
 
+                // Lecturas x factores de riesgo en un solo JOIN multiplica
+                // filas (producto cartesiano): mejor una consulta por coleccion.
+                .AsSplitQuery()
+
                 .FirstOrDefaultAsync(x =>
                     x.StudyId == studyId);
 
             if (study == null)
             {
-                return NotFound(new
-                {
-                    message = "Study not found"
-                });
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Estudio no encontrado",
+                    detail: $"No existe el estudio {studyId}.");
             }
 
             return Ok(new
@@ -161,6 +169,13 @@ namespace bloodPressureWebApi.Controllers
                 studyStatus =
                     study.StudyStatus,
 
+                // Diagnostico en proceso / fallido (ver GET {id}/status)
+                processingStatus =
+                    study.ProcessingStatus,
+
+                processingError =
+                    FormatProcessingError(study, environment),
+
                 // =====================================
                 // PATIENT
                 // =====================================
@@ -168,7 +183,7 @@ namespace bloodPressureWebApi.Controllers
                 patient = new
                 {
                     patientId =
-                        study.Patient.PatientId,
+                        study.Patient!.PatientId,
 
                     firstName =
                         study.Patient.FirstName,
@@ -411,11 +426,110 @@ namespace bloodPressureWebApi.Controllers
             });
         }
         // =====================================================
+        // PROCESSING STATUS
+        //
+        // GET api/Studies/{id}/status
+        // Respuesta minima para que el frontend consulte cada pocos
+        // segundos mientras el diagnostico se recalcula.
+        // =====================================================
+
+        [HttpGet("{id:int}/status")]
+        [ProducesResponseType<StudyProcessingStatusResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetProcessingStatus(
+            int id,
+            [FromServices] IHostEnvironment environment,
+            CancellationToken cancellationToken)
+        {
+            var study = await _context.MAPAStudies
+                .AsNoTracking()
+                .Where(x => x.StudyId == id)
+                .Select(x => new MAPAStudy
+                {
+                    StudyId = x.StudyId,
+                    ProcessingStatus = x.ProcessingStatus,
+                    ProcessingError = x.ProcessingError
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (study is null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Estudio no encontrado",
+                    detail: $"No existe el estudio {id}.");
+            }
+
+            return Ok(new StudyProcessingStatusResponse(
+                study.StudyId,
+                study.ProcessingStatus,
+                StudyProcessingStatus.IsInProgress(study.ProcessingStatus),
+                study.ProcessingStatus == StudyProcessingStatus.Failed,
+                FormatProcessingError(study, environment)));
+        }
+
+        // El worker guarda ex.Message tal cual (puede traer detalles de
+        // MATLAB o SQL). Solo se muestra completo en Development.
+        private static string? FormatProcessingError(
+            MAPAStudy study,
+            IHostEnvironment environment)
+        {
+            if (study.ProcessingStatus != StudyProcessingStatus.Failed)
+            {
+                return null;
+            }
+
+            return environment.IsDevelopment()
+                ? study.ProcessingError
+                : "The diagnosis could not be recalculated. Try again or contact support.";
+        }
+
+        // =====================================================
+        // CREATE WITH FILE (multipart/form-data)
+        //
+        // Estudio + factores de riesgo + Excel para un paciente existente,
+        // en una sola transaccion: si el Excel falla, no queda un estudio
+        // vacio.
+        // =====================================================
+
+        [HttpPost("with-file")]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
+        [ProducesResponseType<StudyIntakeResponse>(StatusCodes.Status201Created)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> CreateStudyWithFile(
+            [FromForm] CreateStudyWithFileRequest request,
+            [FromServices] StudyIntakeService intakeService,
+            CancellationToken cancellationToken)
+        {
+            var result = await intakeService.AddStudyAsync(
+                request,
+                cancellationToken);
+
+            if (result is null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Paciente no encontrado",
+                    detail: $"No existe el paciente {request.PatientId}.");
+            }
+
+            return CreatedAtAction(
+                nameof(GetStudy),
+                new { id = result.StudyId },
+                result);
+        }
+
+        // =====================================================
         // UPLOAD
         // =====================================================
 
         [HttpPost("upload/{studyId}")]
-        public async Task<IActionResult> UploadStudyFile(int studyId,IFormFile file)
+        public async Task<IActionResult> UploadStudyFile(
+            int studyId,
+            IFormFile file,
+            [FromServices] DiagnosisQueue queue)
         {
             using var transaction =
                 await _context
@@ -456,40 +570,44 @@ namespace bloodPressureWebApi.Controllers
                         loads.NightPressureLoad);
 
                 // =====================================
-                // AI
+                // AI (en la cola, como todas las rutas)
+                // El archivo ya es valido: lo que falte es MATLAB, y eso
+                // lo resuelve el worker con reintentos y estado visible.
                 // =====================================
 
-                await _diagnosisService
-                    .RunDiagnosis(
-                        studyId);
+                var study = await _context.MAPAStudies
+                    .FirstAsync(x => x.StudyId == studyId);
+
+                study.ProcessingStatus = StudyProcessingStatus.Queued;
+                study.ProcessingError = null;
+
+                await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
 
-                return Ok(new
+                await queue.EnqueueAsync(new DiagnosisJob { StudyId = studyId });
+
+                return Accepted(new
                 {
                     success = true,
 
                     studyId =
                         studyId,
 
+                    processingStatus =
+                        study.ProcessingStatus,
+
                     message =
-                        "Study imported successfully"
+                        "Study imported; diagnosis queued"
                 });
             }
-            catch (Exception ex)
+            catch
             {
+                // La excepcion la convierte en ProblemDetails el
+                // GlobalExceptionHandler (sin exponer detalles internos).
                 await transaction.RollbackAsync();
 
-                return BadRequest(new
-                {
-                    success = false,
-
-                    message =
-                        ex.Message,
-
-                    inner =
-                        ex.InnerException?.Message
-                });
+                throw;
             }
         }
 

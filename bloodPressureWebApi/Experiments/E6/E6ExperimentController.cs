@@ -2,6 +2,8 @@
 
 namespace bloodPressureWebApi.Experiments.E6
 {
+    // Solo se publica con Experiments:Enabled = true (ver Program.cs)
+    [bloodPressureWebApi.Infrastructure.Experiments.ExperimentEndpoint]
     [ApiController]
     [Route("api/experiments/e6")]
     public class E6ExperimentController : ControllerBase

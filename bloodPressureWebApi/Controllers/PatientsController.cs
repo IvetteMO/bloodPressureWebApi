@@ -1,8 +1,12 @@
 ﻿using bloodPressureWebApi.Data;
-using bloodPressureWebApi.DTOs.Shared;
+using bloodPressureWebApi.DTOs.Patients;
+using bloodPressureWebApi.Constants;
 using bloodPressureWebApi.Models;
+using bloodPressureWebApi.Queues;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using bloodPressureWebApi.DTOs.Studies;
+using bloodPressureWebApi.Services;
 
 namespace bloodPressureWebApi.Controllers
 {
@@ -13,10 +17,14 @@ namespace bloodPressureWebApi.Controllers
     {
         private readonly ApplicationDbContext _context;
 
+        private readonly DiagnosisQueue _queue;
+
         public PatientsController(
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            DiagnosisQueue queue)
         {
             _context = context;
+            _queue = queue;
         }
 
         // =====================================================
@@ -71,45 +79,26 @@ namespace bloodPressureWebApi.Controllers
         // =====================================================
 
         [HttpPost]
-        public async Task<IActionResult>CreatePatient([FromBody]PatientDto dto)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePatient(
+            [FromBody] PatientRequest request,
+            CancellationToken cancellationToken)
         {
-            var newPatient =
-                new Patients
-                {
-                    FirstName =
-                        dto.FirstName,
+            var newPatient = new Patients
+            {
+                CreatedAt = DateTime.Now
+            };
 
-                    LastName =
-                        dto.LastName,
-
-                    BirthDate =
-                        dto.BirthDate,
-
-                    Sex =
-                        dto.Sex,
-
-                    PhoneNumber =
-                        dto.PhoneNumber,
-
-                    Email =
-                        dto.Email,
-
-                    Notes =
-                        dto.Notes,
-
-                    CreatedAt =
-                        DateTime.Now
-                };
+            ApplyFields(newPatient, request);
 
             _context.ChangeTracker.Clear();
 
-            await _context
-                .Patients
-                .AddAsync(newPatient);
+            await _context.Patients.AddAsync(newPatient, cancellationToken);
 
-            await _context
-                .SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
+            // Misma forma que antes: el workflow del frontend lee patientId.
             return Ok(new
             {
                 newPatient.PatientId,
@@ -119,56 +108,121 @@ namespace bloodPressureWebApi.Controllers
                 newPatient.LastName
             });
         }
+
         // =====================================================
-        // UPDATE
+        // CREATE WITH STUDY (multipart/form-data)
+        //
+        // Paciente + estudio + factores de riesgo + Excel en una sola
+        // transaccion: si el Excel falla, no se crea nada.
         // =====================================================
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdatePatient(int id,Patients updated)
+        [HttpPost("with-study")]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(MaxStudyFileBytes)]
+        [ProducesResponseType<StudyIntakeResponse>(StatusCodes.Status201Created)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePatientWithStudy(
+            [FromForm] RegisterPatientRequest request,
+            [FromServices] StudyIntakeService intakeService,
+            CancellationToken cancellationToken)
         {
-            var patient =
-                await _context.Patients
-                .FirstOrDefaultAsync(
-                    x => x.PatientId == id
-                );
+            var result = await intakeService.RegisterPatientAsync(
+                request,
+                cancellationToken);
 
-            if (patient == null)
-            {
-                return NotFound(new
-                {
-                    message =
-                        "Patient not found"
-                });
-            }
-
-            patient.FirstName =
-                updated.FirstName;
-
-            patient.LastName =
-                updated.LastName;
-
-            patient.BirthDate =
-                updated.BirthDate;
-
-            patient.Sex =
-                updated.Sex;
-
-            patient.PhoneNumber =
-                updated.PhoneNumber;
-
-            patient.Email =
-                updated.Email;
-
-            patient.Notes =
-                updated.Notes;
-
-            await _context
-                .SaveChangesAsync();
-
-            return Ok(patient);
+            return CreatedAtAction(
+                nameof(GetPatient),
+                new { id = result.PatientId },
+                result);
         }
 
-        [HttpDelete("{id}")]public async Task<IActionResult>DeletePatient(int id)
+        // Un Excel de MAPA pesa unos KB; 10 MB es margen de sobra.
+        private const long MaxStudyFileBytes = 10 * 1024 * 1024;
+
+        // =====================================================
+        // UPDATE
+        //
+        // Si cambia el sexo o la fecha de nacimiento, los diagnosticos
+        // guardados ya no corresponden (FHS, CVDRisk y edad del corazon
+        // dependen de ellos): se recalculan todos los estudios del paciente.
+        // =====================================================
+
+        [HttpPut("{id:int}")]
+        [ProducesResponseType<PatientResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdatePatient(
+            int id,
+            [FromBody] PatientRequest request,
+            CancellationToken cancellationToken)
+        {
+            var patient = await _context.Patients
+                .Include(x => x.Studies)
+                .FirstOrDefaultAsync(
+                    x => x.PatientId == id,
+                    cancellationToken);
+
+            if (patient is null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Paciente no encontrado",
+                    detail: $"No existe el paciente {id}.");
+            }
+
+            var affectsDiagnosis =
+                patient.Sex != request.Sex
+                || patient.BirthDate?.Date != request.BirthDate?.Date;
+
+            ApplyFields(patient, request);
+
+            var studiesToRecalculate = affectsDiagnosis
+                ? patient.Studies.ToList()
+                : new List<MAPAStudy>();
+
+            foreach (var study in studiesToRecalculate)
+            {
+                study.ProcessingStatus = StudyProcessingStatus.Queued;
+                study.ProcessingError = null;
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // Sin token a proposito: los cambios ya se guardaron.
+            foreach (var study in studiesToRecalculate)
+            {
+                await _queue.EnqueueAsync(
+                    new DiagnosisJob
+                    {
+                        StudyId = study.StudyId
+                    });
+            }
+
+            return Ok(PatientResponse.From(patient, studiesToRecalculate.Count));
+        }
+
+        // =====================================================
+        // HELPERS
+        // =====================================================
+
+        private static void ApplyFields(
+            Patients patient,
+            PatientRequest request)
+        {
+            patient.FirstName = request.FirstName?.Trim();
+            patient.LastName = request.LastName?.Trim();
+            patient.BirthDate = request.BirthDate?.Date;
+            patient.Sex = request.Sex;
+            patient.PhoneNumber = NullIfBlank(request.PhoneNumber);
+            patient.Email = NullIfBlank(request.Email);
+            patient.Notes = NullIfBlank(request.Notes);
+        }
+
+        private static string? NullIfBlank(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeletePatient(int id)
         {
             var patient =
                 await _context
@@ -200,3 +254,4 @@ namespace bloodPressureWebApi.Controllers
         }
     }
 }
+

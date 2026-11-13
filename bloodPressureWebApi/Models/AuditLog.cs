@@ -18,5 +18,21 @@
 
         public DateTime CreatedAt { get; set; }
             = DateTime.Now;
+
+        // ---------- Quién y cómo (agregado con el login) ----------
+
+        public int? UserId { get; set; }
+
+        public string? UserEmail { get; set; }
+
+        public string? UserRole { get; set; }
+
+        public string? HttpMethod { get; set; }
+
+        public string? Path { get; set; }
+
+        public int? StatusCode { get; set; }
+
+        public string? IpAddress { get; set; }
     }
 }

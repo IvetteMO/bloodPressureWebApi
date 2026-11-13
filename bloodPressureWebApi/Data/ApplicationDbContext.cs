@@ -20,6 +20,8 @@ namespace bloodPressureWebApi.Data
         public DbSet<Patients> Patients { get; set; }
         public DbSet<AuditLog>AuditLogs { get; set; }
 
+        public DbSet<AppUser> AppUsers { get; set; }
+
         public DbSet<PatientRiskFactor>
             PatientRiskFactors
         { get; set; }
@@ -59,6 +61,39 @@ namespace bloodPressureWebApi.Data
             ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // =====================================
+            // USUARIOS (login)
+            // =====================================
+
+            modelBuilder.Entity<AppUser>(user =>
+            {
+                user.HasKey(x => x.AppUserId);
+
+                user.HasIndex(x => x.Email).IsUnique();
+
+                user.Property(x => x.Email).HasMaxLength(256).IsRequired();
+                user.Property(x => x.DisplayName).HasMaxLength(150).IsRequired();
+                user.Property(x => x.PasswordHash).IsRequired();
+                user.Property(x => x.Role).HasMaxLength(30).IsRequired();
+                user.Property(x => x.SecurityStamp).HasMaxLength(64).IsRequired();
+            });
+
+            // =====================================
+            // AUDITORIA: columnas de usuario
+            // =====================================
+
+            modelBuilder.Entity<AuditLog>(audit =>
+            {
+                audit.Property(x => x.UserEmail).HasMaxLength(256);
+                audit.Property(x => x.UserRole).HasMaxLength(30);
+                audit.Property(x => x.HttpMethod).HasMaxLength(10);
+                audit.Property(x => x.Path).HasMaxLength(500);
+                audit.Property(x => x.IpAddress).HasMaxLength(64);
+
+                audit.HasIndex(x => x.CreatedAt);
+                audit.HasIndex(x => x.UserId);
+            });
 
             // =================================================
             // PATIENTS

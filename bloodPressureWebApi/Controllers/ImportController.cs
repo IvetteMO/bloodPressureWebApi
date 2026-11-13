@@ -3,7 +3,6 @@ using bloodPressureWebApi.Data;
 using bloodPressureWebApi.Models;
 using bloodPressureWebApi.Queues;
 using bloodPressureWebApi.Services;
-using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -52,23 +51,13 @@ namespace bloodPressureWebApi.Controllers
         int patientId,
         IFormFile file)
         {
-            try
-            {
-                var result =
-                    await _importService
-                        .PreviewImport(
-                            file,
-                            patientId);
+            var result =
+                await _importService
+                    .PreviewImport(
+                        file,
+                        patientId);
 
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new
-                {
-                    error = ex.Message
-                });
-            }
+            return Ok(result);
         }
 
         [HttpPost("upload/{studyId}")]
@@ -109,15 +98,16 @@ namespace bloodPressureWebApi.Controllers
                                 x.StudyId ==
                                 studyId);
 
-                                if (study != null)
-                                {
-                                    study.ProcessingStatus =
-                                        StudyProcessingStatus
-                                        .Uploaded;
+                if (study != null)
+                {
+                    study.ProcessingStatus =
+                        StudyProcessingStatus.Queued;
 
-                                    await _context
-                                        .SaveChangesAsync();
-                                }
+                    study.ProcessingError = null;
+
+                    await _context
+                        .SaveChangesAsync();
+                }
 
                 await _featureService
                     .ExtractFeatures(
@@ -125,17 +115,17 @@ namespace bloodPressureWebApi.Controllers
                         loads.DayPressureLoad,
                         loads.NightPressureLoad);
 
-                //await _diagnosisService
-                //    .RunDiagnosis(
-                //        studyId);
-
-                BackgroundJob.Enqueue<
-                    AIDiagnosisService>(
-                        x =>
-                            x.RunDiagnosis(
-                                studyId));
-
                 await transaction.CommitAsync();
+
+                // Diagnostico en la misma cola que el resto de la app
+                // (antes era Hangfire, encolado ANTES del commit: el job
+                // podia arrancar sin ver las features y el estudio se
+                // quedaba en UPLOADED para siempre).
+                await _queue.EnqueueAsync(
+                    new DiagnosisJob
+                    {
+                        StudyId = studyId
+                    });
 
                 return Ok(new
                 {
@@ -151,21 +141,13 @@ namespace bloodPressureWebApi.Controllers
                         "Study imported successfully"
                 });
             }
-            catch (Exception ex)
+            catch
             {
+                // La excepcion la convierte en ProblemDetails el
+                // GlobalExceptionHandler (sin exponer detalles internos).
                 await transaction.RollbackAsync();
 
-                return BadRequest(new
-                {
-                    error =
-                        ex.Message,
-
-                    inner =
-                        ex.InnerException?.Message,
-
-                    stack =
-                        ex.StackTrace
-                });
+                throw;
             }
         }
     }

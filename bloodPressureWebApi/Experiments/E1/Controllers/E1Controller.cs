@@ -10,6 +10,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace bloodPressureWebApi.Controllers
 {
+    // Solo se publica con Experiments:Enabled = true (ver Program.cs)
+    [bloodPressureWebApi.Infrastructure.Experiments.ExperimentEndpoint]
     [ApiController]
 
     [Route(

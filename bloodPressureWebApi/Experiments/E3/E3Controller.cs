@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace bloodPressureWebApi.Controllers.Experiments
 {
+    // Solo se publica con Experiments:Enabled = true (ver Program.cs)
+    [bloodPressureWebApi.Infrastructure.Experiments.ExperimentEndpoint]
     [ApiController]
     [Route("api/experiments/e3")]
     public class E3Controller : ControllerBase

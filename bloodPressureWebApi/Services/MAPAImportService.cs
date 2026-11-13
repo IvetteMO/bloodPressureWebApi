@@ -1,5 +1,6 @@
 ﻿using bloodPressureWebApi.Data;
 using bloodPressureWebApi.DTOs.Import;
+using bloodPressureWebApi.Exceptions;
 using bloodPressureWebApi.Models;
 
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +45,7 @@ namespace bloodPressureWebApi.Services
                 ||
                 file.Length == 0)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Invalid file");
             }
 
@@ -60,7 +61,7 @@ namespace bloodPressureWebApi.Services
 
             if (study == null)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Study not found");
             }
 
@@ -150,7 +151,7 @@ namespace bloodPressureWebApi.Services
 
             if (ws == null)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Worksheet not found");
             }
 
@@ -360,7 +361,7 @@ namespace bloodPressureWebApi.Services
             if (
                 !readings.Any())
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "No readings detected");
             }
 
@@ -403,7 +404,7 @@ namespace bloodPressureWebApi.Services
             if (
                 existingStudy != null)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Duplicate study detected");
             }
 
@@ -476,7 +477,7 @@ namespace bloodPressureWebApi.Services
                 ||
                 file.Length == 0)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Invalid file");
             }
 
@@ -531,7 +532,7 @@ namespace bloodPressureWebApi.Services
 
             if (ws == null)
             {
-                throw new Exception(
+                throw new InvalidStudyFileException(
                     "Worksheet not found");
             }
 
@@ -759,7 +760,7 @@ namespace bloodPressureWebApi.Services
                         s.Trim(), System.Globalization.CultureInfo.InvariantCulture, out var t):
                     return t.TotalDays - Math.Floor(t.TotalDays);
                 case null:
-                    throw new InvalidOperationException(
+                    throw new InvalidStudyDataException(
                         $"Fila {row}: la hora (columna C) esta vacia.");
                 default:
                     try
@@ -770,7 +771,7 @@ namespace bloodPressureWebApi.Services
                     }
                     catch
                     {
-                        throw new InvalidOperationException(
+                        throw new InvalidStudyDataException(
                             $"Fila {row}: hora no valida en columna C: '{value}'.");
                     }
             }
@@ -779,7 +780,7 @@ namespace bloodPressureWebApi.Services
         private static int ReadInteger(object? value, int row, string column)
         {
             if (value == null || (value is string s0 && string.IsNullOrWhiteSpace(s0)))
-                throw new InvalidOperationException(
+                throw new InvalidStudyDataException(
                     $"Fila {row}: {column} esta vacia.");
 
             double d;
@@ -791,7 +792,7 @@ namespace bloodPressureWebApi.Services
             }
             catch
             {
-                throw new InvalidOperationException(
+                throw new InvalidStudyDataException(
                     $"Fila {row}: valor no numerico en {column}: '{value}'.");
             }
 

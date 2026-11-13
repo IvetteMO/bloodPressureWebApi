@@ -26,6 +26,15 @@ namespace bloodPressureWebApi.Services
                 ? Path.Combine(@"C:\MAPA_E1_TEST", "ExperimentResults", "Trace")
                 : Environment.ExpandEnvironmentVariables(configured);
 
+            // Fuera de los experimentos la traza queda apagada: escribe
+            // lecturas de pacientes en CSV en cada diagnostico.
+            if (!configuration.GetValue("Experiments:Enabled", false))
+            {
+                Enabled = false;
+                _logger.LogInformation("E1-B trace disabled (Experiments:Enabled = false).");
+                return;
+            }
+
             try
             {
                 Directory.CreateDirectory(_folder);

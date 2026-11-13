@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace bloodPressureWebApi.Controllers
 {
+    // Solo se publica con Experiments:Enabled = true (ver Program.cs)
+    [bloodPressureWebApi.Infrastructure.Experiments.ExperimentEndpoint]
     [ApiController]
     [Route("api/experiments/e1b")]
     public class E1BController : ControllerBase
@@ -95,7 +97,8 @@ namespace bloodPressureWebApi.Controllers
                 path,
                 "text/csv",
                 "E1B_ValidationResults.csv");
-           }
-        
+        }
+
     }
 }
+

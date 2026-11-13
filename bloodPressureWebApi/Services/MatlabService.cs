@@ -111,6 +111,19 @@ namespace bloodPressureWebApi.Services
         }
 
         // ===================================================
+        // LIBERACION DE MEMORIA NATIVA
+        //
+        // Cada MWNumericArray reserva memoria FUERA del recolector de .NET
+        // (en el MATLAB Runtime). Si no se hace Dispose, esa memoria solo se
+        // libera cuando el GC decide finalizar el objeto, y en un servidor
+        // que corre semanas el proceso crece sin control.
+        //
+        // Por eso cada entrada y cada salida se declara con "using var":
+        // se liberan al terminar el metodo, despues de leer el resultado.
+        // Los calculos y los mensajes de error son los mismos de antes.
+        // ===================================================
+
+        // ===================================================
         // BP LEVEL FUZZY
         // ===================================================
 
@@ -120,27 +133,17 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray sys =
-                    new MWNumericArray(
-                        systolic);
+                using var sys = new MWNumericArray(systolic);
+                using var dia = new MWNumericArray(diastolic);
 
-                MWNumericArray dia =
-                    new MWNumericArray(
-                        diastolic);
+                using var result = (MWNumericArray)_bpLevel.RunBPLevel(sys, dia);
 
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _bpLevel.RunBPLevel(
-                        sys,
-                        dia);
-
-                return
-                    result.ToScalarDouble();
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"BPLevel MATLAB error: {ex.Message}");
+                    $"BPLevel MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -154,33 +157,23 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray d =
-                    new MWNumericArray(
-                        diurnal);
+                using var d = new MWNumericArray(diurnal);
+                using var n = new MWNumericArray(nocturnal);
 
-                MWNumericArray n =
-                    new MWNumericArray(
-                        nocturnal);
+                using var result = (MWNumericArray)_bpLoad.RunBPLoad(d, n);
 
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _bpLoad.RunBPLoad(
-                        d,
-                        n);
-
-                return
-                    result.ToScalarDouble();
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"BPLoad MATLAB error: {ex.Message}");
+                    $"BPLoad MATLAB error: {ex.Message}", ex);
             }
         }
 
-        //// ===================================================
-        //// HEART RATE FUZZY
-        //// ===================================================
+        // ===================================================
+        // HEART RATE FUZZY
+        // ===================================================
 
         public double HeartRate(
             double age,
@@ -188,25 +181,17 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray a =
-                    new MWNumericArray(age);
+                using var a = new MWNumericArray(age);
+                using var p = new MWNumericArray(pulse);
 
-                MWNumericArray p =
-                    new MWNumericArray(pulse);
+                using var result = (MWNumericArray)_heartRate.RunHeartRate(a, p);
 
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _heartRate.RunHeartRate(
-                        a,
-                        p);
-
-                return
-                    result.ToScalarDouble();
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"HeartRate MATLAB error: {ex.Message}");
+                    $"HeartRate MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -220,27 +205,17 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray sys =
-                    new MWNumericArray(
-                        systolicRatio);
+                using var sys = new MWNumericArray(systolicRatio);
+                using var dia = new MWNumericArray(diastolicRatio);
 
-                MWNumericArray dia =
-                    new MWNumericArray(
-                        diastolicRatio);
+                using var result = (MWNumericArray)_nocturnal.RunNocturnalBP(sys, dia);
 
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _nocturnal.RunNocturnalBP(
-                        sys,
-                        dia);
-
-                return
-                    result.ToScalarDouble();
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"NocturnalBP MATLAB error: {ex.Message}");
+                    $"NocturnalBP MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -259,25 +234,23 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _fhs.RunFHS(
-                        new MWNumericArray(edad),
-                        new MWNumericArray(sexo),
-                        new MWNumericArray(bmi),
-                        new MWNumericArray(sys),
-                        new MWNumericArray(dia),
-                        new MWNumericArray(fuma),
-                        new MWNumericArray(padres)
-                    );
+                using var mEdad = new MWNumericArray(edad);
+                using var mSexo = new MWNumericArray(sexo);
+                using var mBmi = new MWNumericArray(bmi);
+                using var mSys = new MWNumericArray(sys);
+                using var mDia = new MWNumericArray(dia);
+                using var mFuma = new MWNumericArray(fuma);
+                using var mPadres = new MWNumericArray(padres);
 
-                return
-                    result.ToScalarDouble();
+                using var result = (MWNumericArray)_fhs.RunFHS(
+                    mEdad, mSexo, mBmi, mSys, mDia, mFuma, mPadres);
+
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"FHS MATLAB error: {ex.Message}");
+                    $"FHS MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -296,33 +269,32 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _cvdRisk.RunCVDRisk(
-                        new MWNumericArray(sexo),
-                        new MWNumericArray(edad),
-                        new MWNumericArray(sys),
-                        new MWNumericArray(fuma),
-                        new MWNumericArray(diabetes),
-                        new MWNumericArray(bmi),
-                        new MWNumericArray(trata)
-                    );
+                using var mSexo = new MWNumericArray(sexo);
+                using var mEdad = new MWNumericArray(edad);
+                using var mSys = new MWNumericArray(sys);
+                using var mFuma = new MWNumericArray(fuma);
+                using var mDiabetes = new MWNumericArray(diabetes);
+                using var mBmi = new MWNumericArray(bmi);
+                using var mTrata = new MWNumericArray(trata);
 
-                return
-                    result
-                    .ToVector(
-                        MWArrayComponent.Real)
+                using var result = (MWNumericArray)_cvdRisk.RunCVDRisk(
+                    mSexo, mEdad, mSys, mFuma, mDiabetes, mBmi, mTrata);
+
+                // ToArray() copia los valores a memoria administrada ANTES
+                // de que "using" libere el arreglo de MATLAB.
+                return result
+                    .ToVector(MWArrayComponent.Real)
                     .Cast<object>()
-                    .Select(x =>
-                        Convert.ToDouble(x))
+                    .Select(x => Convert.ToDouble(x))
                     .ToArray();
-                                }
+            }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"CVDRisk MATLAB error: {ex.Message}");
+                    $"CVDRisk MATLAB error: {ex.Message}", ex);
             }
         }
+
         // ===================================================
         // HR TREND
         // ===================================================
@@ -331,19 +303,16 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _hrTrend.RunHRTrend(
-                        new MWNumericArray(
-                            pulse));
+                using var input = new MWNumericArray(pulse);
 
-                return
-                    result.ToScalarDouble();
+                using var result = (MWNumericArray)_hrTrend.RunHRTrend(input);
+
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"HRTrend MATLAB error: {ex.Message}");
+                    $"HRTrend MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -355,19 +324,16 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                MWNumericArray result =
-                    (MWNumericArray)
-                    _sistoTrend.RunSistoTrend(
-                        new MWNumericArray(
-                            systolic));
+                using var input = new MWNumericArray(systolic);
 
-                return
-                    result.ToScalarDouble();
+                using var result = (MWNumericArray)_sistoTrend.RunSistoTrend(input);
+
+                return result.ToScalarDouble();
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"SistoTrend MATLAB error: {ex.Message}");
+                    $"SistoTrend MATLAB error: {ex.Message}", ex);
             }
         }
 
@@ -382,70 +348,36 @@ namespace bloodPressureWebApi.Services
         {
             try
             {
-                systolic =
-                    NormalizeLength(
-                        systolic,
-                        47);
+                systolic = NormalizeLength(systolic, 47);
+                diastolic = NormalizeLength(diastolic, 47);
+                pulse = NormalizeLength(pulse, 47);
 
-                diastolic =
-                    NormalizeLength(
-                        diastolic,
-                        47);
+                double[] sysData = systolic.Select(x => (double)x).ToArray();
+                double[] diaData = diastolic.Select(x => (double)x).ToArray();
+                double[] pulData = pulse.Select(x => (double)x).ToArray();
 
-                pulse =
-                    NormalizeLength(
-                        pulse,
-                        47);
-                double[] sysData =
-                    systolic
-                    .Select(x => (double)x)
-                    .ToArray();
+                using var sys = new MWNumericArray(sysData);
+                using var dia = new MWNumericArray(diaData);
+                using var pul = new MWNumericArray(pulData);
 
-                double[] diaData =
-                    diastolic
-                    .Select(x => (double)x)
-                    .ToArray();
+                using MWArray output = _bpTrend.RunBPTrend(sys, dia, pul);
 
-                double[] pulData =
-                    pulse
-                    .Select(x => (double)x)
-                    .ToArray();
-
-                MWNumericArray sys =
-                    new MWNumericArray(
-                        sysData);
-
-                MWNumericArray dia =
-                    new MWNumericArray(
-                        diaData);
-
-                MWNumericArray pul =
-                    new MWNumericArray(
-                        pulData);
-
-                MWArray output =
-                    _bpTrend.RunBPTrend(
-                        sys,
-                        dia,
-                        pul);
-
-                double[,] values =
-                    (double[,])
-                    output.ToArray();
+                double[,] values = (double[,])output.ToArray();
 
                 return new double[]
                 {
-            values[0, 0],
-            values[0, 1],
-            values[0, 2]
+                    values[0, 0],
+                    values[0, 1],
+                    values[0, 2]
                 };
             }
             catch (Exception ex)
             {
                 throw new Exception(
-                    $"BPTrend MATLAB error: {ex.Message}");
+                    $"BPTrend MATLAB error: {ex.Message}", ex);
             }
         }
+
         // ===================================================
         // NORMALIZE LENGTH
         // ===================================================
